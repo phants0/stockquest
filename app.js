@@ -6,13 +6,13 @@ let portfolio = {};
 let market = [];
 
 const starterMarkets = [
-{ticker:"AAPL",name:"Apple Inc.",featured:true},
-{ticker:"NVDA",name:"NVIDIA Corporation",featured:true},
-{ticker:"AMD",name:"Advanced Micro Devices",featured:true},
-{ticker:"TSLA",name:"Tesla Inc.",featured:true},
-{ticker:"MSFT",name:"Microsoft Corporation",featured:true},
-{ticker:"META",name:"Meta Platforms",featured:true},
-{ticker:"AMZN",name:"Amazon",featured:true}
+    {ticker:"AAPL",name:"Apple Inc.",featured:true},
+    {ticker:"NVDA",name:"NVIDIA Corporation",featured:true},
+    {ticker:"AMD",name:"Advanced Micro Devices",featured:true},
+    {ticker:"TSLA",name:"Tesla Inc.",featured:true},
+    {ticker:"MSFT",name:"Microsoft Corporation",featured:true},
+    {ticker:"META",name:"Meta Platforms",featured:true},
+    {ticker:"AMZN",name:"Amazon",featured:true}
 ];
 
 function showError(text){
@@ -22,21 +22,31 @@ function showError(text){
     const div = document.createElement("div");
     div.id = "error-overlay";
     div.style = `
-        position:fixed;
-        top:20px;
-        left:50%;
-        transform:translateX(-50%);
-        background:#ff4444;
-        color:white;
-        padding:16px 24px;
-        border-radius:16px;
-        font-weight:bold;
-        z-index:999999;
-        box-shadow:0 0 30px rgba(0,0,0,0.5);
+        position:fixed;top:20px;left:50%;transform:translateX(-50%);
+        background:#ff4444;color:white;padding:16px 24px;border-radius:16px;
+        font-weight:bold;z-index:999999;box-shadow:0 0 30px rgba(0,0,0,.5);
     `;
     div.innerText = text;
     document.body.appendChild(div);
-    setTimeout(()=>div.remove(),3000);
+    setTimeout(()=>div.remove(),4000);
+}
+
+function requestApiKey() {
+    const current = window.STOCKQUEST_CONFIG?.TWELVEDATA_API_KEY || "";
+    const key = prompt("Enter your Twelve Data API key. It will be stored only in this browser's local storage:", current);
+
+    if (key === null) return false;
+
+    const clean = key.trim();
+    if (!clean) {
+        showError("A Twelve Data API key is required for prices and search.");
+        return false;
+    }
+
+    window.STOCKQUEST_CONFIG.setKey(clean);
+    clearStockCache();
+    showError("API key saved. Loading market data...");
+    return true;
 }
 
 window.onload = ()=>{
@@ -55,7 +65,10 @@ function renderApp(){
           <h1 id="homeBtn" style="cursor:pointer;">StockQuest Pro</h1>
           <div>Profile: ${currentProfile || "Guest"}</div>
         </div>
-        <h2>$${cash.toFixed(2)}</h2>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button id="apiKeyBtn" class="key-btn">API Key</button>
+          <h2>$${cash.toFixed(2)}</h2>
+        </div>
       </div>
       <div class="layout">
         <div class="panel">
@@ -70,13 +83,28 @@ function renderApp(){
       </div>
     </div>`;
 
-    const home = document.getElementById("homeBtn");
-    if(home) home.onclick = renderMenu;
+    document.getElementById("homeBtn").onclick = renderMenu;
+    document.getElementById("apiKeyBtn").onclick = () => {
+        if (requestApiKey()) renderApp();
+    };
 
     const input = document.getElementById("searchInput");
     if(input) input.addEventListener("input", e=>{
         if(typeof search === "function") search(e.target.value);
     });
 
-    if(typeof renderMarket === "function") renderMarket();
+    if(!window.STOCKQUEST_CONFIG?.hasKey()){
+        const marketEl = document.getElementById("market");
+        marketEl.innerHTML = `
+            <div class="stock setup-card">
+                <h2>Connect Twelve Data</h2>
+                <p>Prices, charts, and company search need your Twelve Data API key.</p>
+                <button id="connectApiBtn" class="menu-btn gold">Add API Key</button>
+            </div>`;
+        document.getElementById("connectApiBtn").onclick = () => {
+            if (requestApiKey()) renderApp();
+        };
+    } else if(typeof renderMarket === "function") {
+        renderMarket();
+    }
 }
