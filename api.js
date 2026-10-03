@@ -1,4 +1,3 @@
-const API_KEY = String(window.STOCKQUEST_CONFIG?.TWELVEDATA_API_KEY || "").trim();
 const API_BASE = "https://api.twelvedata.com";
 
 const quoteCache = new Map();
@@ -17,6 +16,10 @@ const SETTINGS = {
     retryDelay: 700,
     maxConcurrent: 3
 };
+
+function getApiKey() {
+    return String(window.STOCKQUEST_CONFIG?.TWELVEDATA_API_KEY || "").trim();
+}
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -68,16 +71,13 @@ async function fetchJSON(url) {
     for (let attempt = 0; attempt <= SETTINGS.retries; attempt++) {
         try {
             const response = await fetch(url, { cache: "no-store" });
-            let data;
-            try {
-                data = await response.json();
-            } catch {
-                throw new Error(`Invalid API response (${response.status})`);
-            }
+            const data = await response.json().catch(() => null);
 
             if (!response.ok || data?.status === "error" || data?.code) {
-                throw new Error(data?.message || `HTTP ${response.status}`);
+                const message = data?.message || data?.code || `HTTP ${response.status}`;
+                throw new Error(message);
             }
+
             return data;
         } catch (error) {
             lastError = error;
@@ -90,10 +90,22 @@ async function fetchJSON(url) {
     throw lastError || new Error("Request failed");
 }
 
+function missingKeyResult(message = "Add your Twelve Data API key to StockQuest first.") {
+    return {
+        price: null,
+        green: true,
+        stale: false,
+        cached: false,
+        error: message
+    };
+}
+
 async function getStock(ticker) {
-    if (!API_KEY) return { price: null, green: true, stale: false, error: "Twelve Data API key is not configured" };
     const symbol = normalizeTicker(ticker);
-    if (!symbol) return { price: null, green: true, stale: false, error: "Missing ticker" };
+    if (!symbol) return missingKeyResult("Missing ticker.");
+
+    const key = getApiKey();
+    if (!key) return missingKeyResult();
 
     const cached = quoteCache.get(symbol);
     if (fresh(cached, SETTINGS.quoteTTL)) {
@@ -102,10 +114,13 @@ async function getStock(ticker) {
 
     try {
         const value = await dedupe(`quote:${symbol}`, async () => {
-            const url = `${API_BASE}/price?symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(API_KEY)}`;
+            const url = `${API_BASE}/price?symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(key)}`;
             const data = await fetchJSON(url);
             const price = Number(data?.price);
-            if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid price returned by TwelveData");
+
+            if (!Number.isFinite(price) || price <= 0) {
+                throw new Error("Twelve Data returned no valid price.");
+            }
 
             const previous = quoteCache.get(symbol)?.value?.price;
             const result = {
@@ -114,9 +129,11 @@ async function getStock(ticker) {
                 stale: false,
                 error: null
             };
+
             quoteCache.set(symbol, { time: Date.now(), value: result });
             return result;
         });
+
         return { ...value, cached: false, stale: false };
     } catch (error) {
         if (usable(quoteCache.get(symbol))) {
@@ -127,23 +144,32 @@ async function getStock(ticker) {
                 error: error?.message || "Refresh failed"
             };
         }
-        return { price: null, green: true, stale: false, cached: false, error: error?.message || "Unable to load price" };
+
+        return {
+            price: null,
+            green: true,
+            stale: false,
+            cached: false,
+            error: error?.message || "Unable to load price."
+        };
     }
 }
 
 async function getGraphData(ticker) {
-    if (!API_KEY) return [];
     const symbol = normalizeTicker(ticker);
-    if (!symbol) return [];
+    if (!symbol || !getApiKey()) return [];
 
     const cached = graphCache.get(symbol);
     if (fresh(cached, SETTINGS.graphTTL)) return cached.value.slice();
 
     try {
         const prices = await dedupe(`graph:${symbol}`, async () => {
-            const url = `${API_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=5min&outputsize=24&apikey=${encodeURIComponent(API_KEY)}`;
+            const url = `${API_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=5min&outputsize=24&apikey=${encodeURIComponent(getApiKey())}`;
             const data = await fetchJSON(url);
-            if (!Array.isArray(data?.values)) throw new Error("No graph data returned by TwelveData");
+
+            if (!Array.isArray(data?.values)) {
+                throw new Error("Twelve Data returned no chart data.");
+            }
 
             const values = data.values
                 .slice()
@@ -151,10 +177,12 @@ async function getGraphData(ticker) {
                 .map(item => Number(item?.close))
                 .filter(value => Number.isFinite(value) && value > 0);
 
-            if (values.length < 2) throw new Error("Not enough graph data");
+            if (values.length < 2) throw new Error("Not enough chart data.");
+
             graphCache.set(symbol, { time: Date.now(), value: values });
             return values;
         });
+
         return prices.slice();
     } catch (error) {
         console.error(`Graph failed for ${symbol}:`, error);
@@ -164,9 +192,8 @@ async function getGraphData(ticker) {
 }
 
 async function fetchSearch(query) {
-    if (!API_KEY) return [];
     const clean = String(query || "").trim();
-    if (!clean) return [];
+    if (!clean || !getApiKey()) return [];
 
     const key = clean.toLowerCase();
     const cached = searchCache.get(key);
@@ -174,27 +201,33 @@ async function fetchSearch(query) {
 
     try {
         const results = await dedupe(`search:${key}`, async () => {
-            const url = `${API_BASE}/symbol_search?symbol=${encodeURIComponent(clean)}&apikey=${encodeURIComponent(API_KEY)}`;
+            const url = `${API_BASE}/symbol_search?symbol=${encodeURIComponent(clean)}&outputsize=10&apikey=${encodeURIComponent(getApiKey())}`;
             const data = await fetchJSON(url);
-            if (!Array.isArray(data?.data)) throw new Error("No search data returned by TwelveData");
+
+            if (!Array.isArray(data?.data)) {
+                throw new Error("Twelve Data returned no search results.");
+            }
 
             const seen = new Set();
-            const list = data.data.filter(item => {
-                const symbol = normalizeTicker(item?.symbol);
-                if (!symbol || seen.has(symbol)) return false;
-                seen.add(symbol);
-                return true;
-            }).slice(0, 10).map(item => ({
-                symbol: normalizeTicker(item.symbol),
-                instrument_name: item.instrument_name || item.name || item.symbol,
-                exchange: item.exchange || "",
-                mic_code: item.mic_code || "",
-                type: item.type || ""
-            }));
+            const list = data.data
+                .filter(item => {
+                    const symbol = normalizeTicker(item?.symbol);
+                    if (!symbol || seen.has(symbol)) return false;
+                    seen.add(symbol);
+                    return true;
+                })
+                .map(item => ({
+                    symbol: normalizeTicker(item.symbol),
+                    instrument_name: item.instrument_name || item.name || item.symbol,
+                    exchange: item.exchange || "",
+                    mic_code: item.mic_code || "",
+                    type: item.instrument_type || item.type || ""
+                }));
 
             searchCache.set(key, { time: Date.now(), value: list });
             return list;
         });
+
         return results.map(item => ({ ...item }));
     } catch (error) {
         console.error("Search failed:", error);
@@ -210,6 +243,7 @@ function clearStockCache(ticker) {
         searchCache.clear();
         return;
     }
+
     const symbol = normalizeTicker(ticker);
     quoteCache.delete(symbol);
     graphCache.delete(symbol);
@@ -223,6 +257,7 @@ function getDataLayerStatus(ticker) {
         quoteCached: quoteCache.has(symbol),
         graphCached: graphCache.has(symbol),
         quoteInFlight: inFlight.has(`quote:${symbol}`),
-        graphInFlight: inFlight.has(`graph:${symbol}`)
+        graphInFlight: inFlight.has(`graph:${symbol}`),
+        configured: Boolean(getApiKey())
     };
 }
