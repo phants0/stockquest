@@ -1,0 +1,42 @@
+name: Deploy StockQuest to Wasmer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      WASMER_TOKEN: ${{ secrets.WASMER_TOKEN }}
+      TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Wasmer
+        run: curl https://get.wasmer.io -sSfL | sh
+      - name: Add Wasmer to PATH
+        run: echo "$HOME/.wasmer/bin" >> "$GITHUB_PATH"
+      - name: Verify secrets are present
+        shell: bash
+        run: |
+          test -n "$WASMER_TOKEN" || { echo "Missing GitHub secret: WASMER_TOKEN"; exit 1; }
+          test -n "$TWELVEDATA_API_KEY" || { echo "Missing GitHub secret: TWELVEDATA_API_KEY"; exit 1; }
+      - name: Deploy application
+        run: wasmer deploy --non-interactive --build-remote
+      - name: Sync Twelve Data secret to Wasmer
+        shell: bash
+        run: |
+          printf 'TWELVEDATA_API_KEY=%s\n' "$TWELVEDATA_API_KEY" > /tmp/stockquest-secrets.env
+          if wasmer app secrets update TWELVEDATA_API_KEY "$TWELVEDATA_API_KEY"; then
+            echo "Updated existing Wasmer secret."
+          else
+            wasmer app secrets create --from-file=/tmp/stockquest-secrets.env
+          fi
+          rm -f /tmp/stockquest-secrets.env
+      - name: Redeploy with runtime secret
+        run: wasmer deploy --non-interactive --build-remote
