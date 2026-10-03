@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           printf 'TWELVEDATA_API_KEY=%s\n' "$TWELVEDATA_API_KEY" > /tmp/stockquest-secrets.env
-          if wasmer app secrets update TWELVEDATA_API_KEY "$TWELVEDATA_API_KEY"; then
+          if wasmer app secrets update --from-file=/tmp/stockquest-secrets.env; then
             echo "Updated existing Wasmer secret."
           else
             wasmer app secrets create --from-file=/tmp/stockquest-secrets.env
