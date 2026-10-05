@@ -16,60 +16,49 @@ StockQuest Pro is a browser-based stock-market simulation game.
 - Request caching, deduplication, retries, and a small request queue
 - Server-side Twelve Data proxy so the API key is never shipped to the browser
 
-## Firebase deployment
+## Cloudflare Pages deployment
 
-StockQuest uses **Firebase Hosting** for the website and **Firebase Cloud Functions** for the private API.
+StockQuest uses Cloudflare Pages for the website and Pages Functions for the private `/api/*` endpoints.
 
-The browser calls same-origin `/api` endpoints. Firebase Hosting rewrites those requests to the `api` Cloud Function, which calls Twelve Data.
+The browser calls same-origin `/api` endpoints. Cloudflare routes those requests to the Pages Functions, which call Twelve Data.
 
-The Twelve Data key is stored in **Google Secret Manager through Firebase**. It is not committed to GitHub and is not sent to the browser.
+The Twelve Data key is stored as an encrypted Cloudflare secret. It is not committed to GitHub and is never sent to the browser.
 
-### First-time setup
+### Cloudflare Dashboard setup
 
-Create a Firebase project and enable billing for Cloud Functions.
+1. Open Cloudflare **Workers & Pages**.
+2. Choose **Create application → Pages → Import an existing Git repository**.
+3. Connect GitHub and select `phants0/stockquest`.
+4. Set the production branch to `main`.
+5. Leave the **Build command** blank because this is a plain HTML/JS project with no build step.
+6. Set the **Build output directory** to `.` so the repository root is served.
+7. Save and deploy.
 
-Install the Firebase CLI:
+Cloudflare Pages can automatically redeploy whenever a new commit is pushed to the connected GitHub repository.
 
-~~~bash
-npm install -g firebase-tools
-~~~
+### Add the Twelve Data secret
 
-Log in:
+In the Cloudflare Pages project, open **Settings → Variables and Secrets → Add**.
 
-~~~bash
-firebase login
-~~~
+Create an encrypted secret named:
 
-From this repository directory, connect the folder to your Firebase project:
+`TWELVEDATA_API_KEY`
 
-~~~bash
-firebase use --add
-~~~
+Paste your Twelve Data API key, choose **Encrypt**, and save it for the **Production** environment.
 
-Choose your Firebase project when prompted. This creates the local `.firebaserc` file; it is ignored by Git.
+The Pages Functions read the secret as `context.env.TWELVEDATA_API_KEY`.
 
-Store the Twelve Data key in Firebase Secret Manager:
+### API routes
 
-~~~bash
-firebase functions:secrets:set TWELVEDATA_API_KEY
-~~~
+- `/api/health`
+- `/api/price?symbol=AAPL`
+- `/api/chart?symbol=AAPL`
+- `/api/search?q=Apple`
 
-Paste the Twelve Data key only when the Firebase CLI prompts for it.
-
-Deploy both the API and website:
-
-~~~bash
-firebase deploy --only functions,hosting
-~~~
-
-Firebase Hosting will provide a `*.web.app` URL.
-
-### Local development
-
-For local testing, use the Firebase Functions emulator. Keep production credentials in Firebase Secret Manager and never put the Twelve Data key in browser-served files.
-
-Do not put the Twelve Data key in `config.js`, `app.js`, `api.js`, HTML, or any other browser-served file.
+The repository includes `_routes.json` so only `/api/*` invokes Pages Functions. Static assets remain normal Pages requests.
 
 ## GitHub
 
-StockQuest no longer uses GitHub Actions secrets or a Wasmer deployment workflow. Deployment is handled with the Firebase CLI, and the Twelve Data secret is managed by Firebase/Google Secret Manager.
+StockQuest no longer uses Firebase, Wasmer, or GitHub Actions secrets for stock data. Cloudflare Pages handles deployment from GitHub, and the Twelve Data credential is stored as an encrypted Cloudflare secret.
+
+Do not put the Twelve Data key in `config.js`, `app.js`, `api.js`, HTML, or any other browser-served file.
