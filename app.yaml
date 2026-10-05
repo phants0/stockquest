@@ -1,5 +1,0 @@
-kind: wasmer.io/App.v0
-owner: phants0
-name: stockquest
-package: .
-description: StockQuest Pro
