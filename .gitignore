@@ -1,3 +1,5 @@
-# Local API-key configuration
-# Keep config.js out of clones if you choose to store your key locally.
-# config.js
+node_modules/
+.firebase/
+.firebaserc
+.env
+.env.*
