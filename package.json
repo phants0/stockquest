@@ -1,1 +1,0 @@
-{"name":"stockquest","version":"1.0.0","private":true,"description":"StockQuest Pro stock-market simulation","scripts":{"start":"node server.js"}}
