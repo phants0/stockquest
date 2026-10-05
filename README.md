@@ -16,25 +16,60 @@ StockQuest Pro is a browser-based stock-market simulation game.
 - Request caching, deduplication, retries, and a small request queue
 - Server-side Twelve Data proxy so the API key is never shipped to the browser
 
-## API key and deployment
+## Firebase deployment
 
-StockQuest does not ask users for an API key.
+StockQuest uses **Firebase Hosting** for the website and **Firebase Cloud Functions** for the private API.
 
-The frontend calls same-origin /api endpoints. server.js reads TWELVEDATA_API_KEY from the server environment and forwards requests to Twelve Data.
+The browser calls same-origin `/api` endpoints. Firebase Hosting rewrites those requests to the `api` Cloud Function, which calls Twelve Data.
 
-For automatic deployment, add these GitHub repository Actions secrets:
+The Twelve Data key is stored in **Google Secret Manager through Firebase**. It is not committed to GitHub and is not sent to the browser.
 
-- TWELVEDATA_API_KEY — your Twelve Data key
-- WASMER_TOKEN — a Wasmer access token used by the deployment workflow
+### First-time setup
 
-The workflow deploys the app to Wasmer, then creates or updates the Wasmer runtime secret named TWELVEDATA_API_KEY, and redeploys.
+Create a Firebase project and enable billing for Cloud Functions.
 
-The Twelve Data key is never committed to this repository and is never exposed to StockQuest users.
+Install the Firebase CLI:
 
-## Local development
+~~~bash
+npm install -g firebase-tools
+~~~
 
-Set TWELVEDATA_API_KEY in your local environment, then run:
+Log in:
 
-npm start
+~~~bash
+firebase login
+~~~
 
-Open the local server URL shown by Node. Do not put the key in config.js.
+From this repository directory, connect the folder to your Firebase project:
+
+~~~bash
+firebase use --add
+~~~
+
+Choose your Firebase project when prompted. This creates the local `.firebaserc` file; it is ignored by Git.
+
+Store the Twelve Data key in Firebase Secret Manager:
+
+~~~bash
+firebase functions:secrets:set TWELVEDATA_API_KEY
+~~~
+
+Paste the Twelve Data key only when the Firebase CLI prompts for it.
+
+Deploy both the API and website:
+
+~~~bash
+firebase deploy --only functions,hosting
+~~~
+
+Firebase Hosting will provide a `*.web.app` URL.
+
+### Local development
+
+For local testing, use the Firebase Functions emulator. Keep production credentials in Firebase Secret Manager and never put the Twelve Data key in browser-served files.
+
+Do not put the Twelve Data key in `config.js`, `app.js`, `api.js`, HTML, or any other browser-served file.
+
+## GitHub
+
+StockQuest no longer uses GitHub Actions secrets or a Wasmer deployment workflow. Deployment is handled with the Firebase CLI, and the Twelve Data secret is managed by Firebase/Google Secret Manager.
