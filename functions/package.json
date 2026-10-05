@@ -1,0 +1,10 @@
+{
+  "name": "stockquest-functions",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-functions": "^7.0.0"
+  }
+}
